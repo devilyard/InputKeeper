@@ -1,0 +1,270 @@
+//
+//  InputMethodCoordinator.swift
+//  InputKeeper
+//
+//  Created by chinnsii on 2026/8/24.
+//
+
+@preconcurrency import AppKit
+import Carbon.HIToolbox
+import Combine
+import Foundation
+
+@MainActor
+final class InputMethodCoordinator: NSObject, ObservableObject {
+    private struct ActiveApplication {
+        let bundleIdentifier: String
+        let name: String
+    }
+
+    private struct PendingRestoration {
+        let bundleIdentifier: String
+        let inputSourceID: String
+    }
+
+    @Published private(set) var rememberedApplications: [ApplicationInputPreference]
+    @Published private(set) var isEnabled: Bool
+    @Published private(set) var currentApplicationName = "等待前台应用"
+    @Published private(set) var currentInputSourceName = "未知输入法"
+    @Published private(set) var statusMessage: String?
+
+    private let store: InputMethodStore
+    private let inputSourceManager: InputSourceManaging
+    private let workspace: NSWorkspace
+    private let ownBundleIdentifier: String
+    private var workspaceObserver: NSObjectProtocol?
+    private var keyboardSelectionObserver: NSObjectProtocol?
+    private var inputSourcePollingTimer: Timer?
+    private var pendingRestoration: PendingRestoration?
+    private var activeBundleIdentifier: String?
+    private var lastObservedInputSourceID: String?
+
+    init(
+        store: InputMethodStore = InputMethodStore(),
+        inputSourceManager: InputSourceManaging = SystemInputSourceManager(),
+        workspace: NSWorkspace = .shared,
+        ownBundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.chinnsii.InputKeeper"
+    ) {
+        self.store = store
+        self.inputSourceManager = inputSourceManager
+        self.workspace = workspace
+        self.ownBundleIdentifier = ownBundleIdentifier
+        rememberedApplications = store.preferences
+        isEnabled = store.isMonitoringEnabled
+
+        super.init()
+        startMonitoring()
+    }
+
+    func setEnabled(_ isEnabled: Bool) {
+        guard self.isEnabled != isEnabled else {
+            return
+        }
+
+        self.isEnabled = isEnabled
+        store.setMonitoringEnabled(isEnabled)
+        statusMessage = isEnabled ? nil : "自动切换已暂停"
+
+        if isEnabled {
+            synchronizeWithFrontmostApplication()
+        }
+    }
+
+    func forget(_ preference: ApplicationInputPreference) {
+        store.removePreference(for: preference.bundleIdentifier)
+        reloadPreferences()
+        statusMessage = "已忘记 \(preference.applicationName) 的输入法"
+    }
+
+    private func startMonitoring() {
+        workspaceObserver = workspace.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                return
+            }
+
+            Task { @MainActor [weak self] in
+                self?.handleApplicationActivation(application)
+            }
+        }
+
+        let notificationName = Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String)
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(inputSourceDidChange(_:)),
+            name: notificationName,
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+
+        keyboardSelectionObserver = NotificationCenter.default.addObserver(
+            forName: NSTextInputContext.keyboardSelectionDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleInputSourceChange()
+            }
+        }
+
+        synchronizeWithFrontmostApplication()
+        startInputSourcePolling()
+    }
+
+    @objc
+    private nonisolated func inputSourceDidChange(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.handleInputSourceChange()
+        }
+    }
+
+    private func synchronizeWithFrontmostApplication() {
+        guard let application = workspace.frontmostApplication else {
+            return
+        }
+        handleApplicationActivation(application)
+    }
+
+    private func startInputSourcePolling() {
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.pollInputSource()
+            }
+        }
+        inputSourcePollingTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func pollInputSource() {
+        guard
+            isEnabled,
+            let runningApplication = workspace.frontmostApplication,
+            let application = descriptor(for: runningApplication)
+        else {
+            return
+        }
+
+        guard activeBundleIdentifier == application.bundleIdentifier else {
+            handleApplicationActivation(runningApplication)
+            return
+        }
+
+        guard
+            let currentInputSource = inputSourceManager.currentInputSource(),
+            currentInputSource.id != lastObservedInputSourceID
+        else {
+            return
+        }
+
+        handleInputSourceChange(currentInputSource)
+    }
+
+    private func handleApplicationActivation(_ application: NSRunningApplication) {
+        guard isEnabled, let activeApplication = descriptor(for: application) else {
+            return
+        }
+
+        activeBundleIdentifier = activeApplication.bundleIdentifier
+        currentApplicationName = activeApplication.name
+        guard let currentInputSource = inputSourceManager.currentInputSource() else {
+            statusMessage = "无法读取当前输入法"
+            return
+        }
+        lastObservedInputSourceID = currentInputSource.id
+        currentInputSourceName = currentInputSource.name
+
+        guard let preference = store.preference(for: activeApplication.bundleIdentifier) else {
+            remember(currentInputSource, for: activeApplication)
+            return
+        }
+
+        guard preference.inputSourceID != currentInputSource.id else {
+            statusMessage = nil
+            return
+        }
+
+        pendingRestoration = PendingRestoration(
+            bundleIdentifier: activeApplication.bundleIdentifier,
+            inputSourceID: preference.inputSourceID
+        )
+
+        guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
+            pendingRestoration = nil
+            statusMessage = "无法切换到 \(preference.inputSourceName)，它可能已被停用"
+            return
+        }
+
+        currentInputSourceName = inputSourceManager.inputSourceName(for: preference.inputSourceID) ?? preference.inputSourceName
+        statusMessage = nil
+    }
+
+    private func handleInputSourceChange(_ observedInputSource: InputSourceDescriptor? = nil) {
+        guard
+            isEnabled,
+            let runningApplication = workspace.frontmostApplication,
+            let activeApplication = descriptor(for: runningApplication)
+        else {
+            return
+        }
+
+        guard activeBundleIdentifier == activeApplication.bundleIdentifier else {
+            handleApplicationActivation(runningApplication)
+            return
+        }
+
+        guard let currentInputSource = observedInputSource ?? inputSourceManager.currentInputSource() else {
+            return
+        }
+
+        lastObservedInputSourceID = currentInputSource.id
+        currentApplicationName = activeApplication.name
+        currentInputSourceName = currentInputSource.name
+
+        if let pendingRestoration {
+            self.pendingRestoration = nil
+            if pendingRestoration.bundleIdentifier == activeApplication.bundleIdentifier,
+               pendingRestoration.inputSourceID == currentInputSource.id {
+                statusMessage = nil
+                return
+            }
+        }
+
+        remember(currentInputSource, for: activeApplication)
+    }
+
+    private func descriptor(for application: NSRunningApplication) -> ActiveApplication? {
+        guard
+            let bundleIdentifier = application.bundleIdentifier,
+            bundleIdentifier != ownBundleIdentifier
+        else {
+            return nil
+        }
+
+        let name = application.localizedName ?? bundleIdentifier
+        return ActiveApplication(bundleIdentifier: bundleIdentifier, name: name)
+    }
+
+    private func remember(_ inputSource: InputSourceDescriptor, for application: ActiveApplication) {
+        let preference = ApplicationInputPreference(
+            bundleIdentifier: application.bundleIdentifier,
+            applicationName: application.name,
+            inputSourceID: inputSource.id,
+            inputSourceName: inputSource.name
+        )
+
+        guard store.preference(for: application.bundleIdentifier) != preference else {
+            return
+        }
+
+        store.save(preference)
+        reloadPreferences()
+        statusMessage = "已记住 \(application.name)：\(inputSource.name)"
+    }
+
+    private func reloadPreferences() {
+        rememberedApplications = store.preferences
+    }
+}

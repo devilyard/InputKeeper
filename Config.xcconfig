@@ -1,0 +1,11 @@
+//
+//  Config.xcconfig
+//  InputKeeper
+//
+//  Created by 王晁 on 2026/9/1.
+//
+
+// Configuration settings file format documentation can be found at:
+// https://developer.apple.com/documentation/xcode/adding-a-build-configuration-file-to-your-project
+VERSION = 1.0.0
+BUILD_NUMBER = 2
