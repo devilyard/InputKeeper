@@ -10,6 +10,8 @@
     <string>com.chinnsii.InputKeeper</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
     <string>InputKeeper</string>
     <key>CFBundlePackageType</key>

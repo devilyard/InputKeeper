@@ -15,6 +15,7 @@
 		BB0000000000000000000006 /* InputSourceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000006 /* InputSourceManager.swift */; };
 		BB0000000000000000000007 /* InputMethodStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000007 /* InputMethodStoreTests.swift */; };
 		BB0000000000000000000008 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000E /* Carbon.framework */; };
+		BB0000000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000F /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +43,8 @@
 		AA000000000000000000000C /* InputKeeper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = InputKeeper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000000D /* InputKeeperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = InputKeeperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000000E /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
+		AA000000000000000000000F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AA0000000000000000000010 /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
 		F2A99EC83046C9C1001471F8 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -103,6 +106,8 @@
 		CC0000000000000000000004 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				AA000000000000000000000F /* Assets.xcassets */,
+				AA0000000000000000000010 /* AppIcon.png */,
 				AA0000000000000000000008 /* Info.plist */,
 			);
 			path = Resources;
@@ -232,6 +237,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB0000000000000000000009 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -415,6 +421,7 @@
 		220000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -438,6 +445,7 @@
 		220000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
