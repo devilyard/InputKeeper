@@ -7,6 +7,7 @@
 
 import Carbon.HIToolbox
 import Foundation
+import OSLog
 
 struct InputSourceDescriptor: Equatable {
     let id: String
@@ -20,6 +21,8 @@ protocol InputSourceManaging: AnyObject {
 }
 
 final class SystemInputSourceManager: InputSourceManaging {
+    private let logger = Logger(subsystem: "com.chinnsii.InputKeeper", category: "InputSource")
+
     func currentInputSource() -> InputSourceDescriptor? {
         guard let unmanagedSource = TISCopyCurrentKeyboardInputSource() else {
             return nil
@@ -33,14 +36,24 @@ final class SystemInputSourceManager: InputSourceManaging {
 
     func selectInputSource(withID id: String) -> Bool {
         guard let source = inputSource(withID: id) else {
+            logger.error("找不到输入源：\(id, privacy: .public)")
             return false
         }
-        return TISSelectInputSource(source) == noErr
+
+        let status = TISSelectInputSource(source)
+        let currentID = currentInputSource()?.id ?? "未知"
+        logger.info(
+            "切换输入源：目标=\(id, privacy: .public)，状态码=\(status)，当前=\(currentID, privacy: .public)"
+        )
+        if status != noErr {
+            logger.error("切换输入源失败：\(id, privacy: .public)，状态码：\(status)")
+        }
+        return status == noErr
     }
 
     private func inputSource(withID id: String) -> TISInputSource? {
         let filter = [kTISPropertyInputSourceID: id as CFString] as CFDictionary
-        guard let unmanagedSources = TISCreateInputSourceList(filter, false) else {
+        guard let unmanagedSources = TISCreateInputSourceList(filter, true) else {
             return nil
         }
 

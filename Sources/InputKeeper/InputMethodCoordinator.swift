@@ -9,17 +9,43 @@
 import Carbon.HIToolbox
 import Combine
 import Foundation
+import OSLog
+
+struct AutomaticInputSourceChangeFilter {
+    private let protectionInterval: TimeInterval
+    private var suppressionDeadline: Date?
+
+    init(protectionInterval: TimeInterval = 0.5) {
+        self.protectionInterval = protectionInterval
+    }
+
+    mutating func begin(at date: Date = Date()) {
+        suppressionDeadline = date.addingTimeInterval(protectionInterval)
+    }
+
+    mutating func cancel() {
+        suppressionDeadline = nil
+    }
+
+    mutating func shouldSuppressChange(at date: Date = Date()) -> Bool {
+        guard let suppressionDeadline else {
+            return false
+        }
+
+        guard date < suppressionDeadline else {
+            self.suppressionDeadline = nil
+            return false
+        }
+
+        return true
+    }
+}
 
 @MainActor
 final class InputMethodCoordinator: NSObject, ObservableObject {
     private struct ActiveApplication {
         let bundleIdentifier: String
         let name: String
-    }
-
-    private struct PendingRestoration {
-        let bundleIdentifier: String
-        let inputSourceID: String
     }
 
     @Published private(set) var rememberedApplications: [ApplicationInputPreference]
@@ -32,10 +58,13 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
     private let inputSourceManager: InputSourceManaging
     private let workspace: NSWorkspace
     private let ownBundleIdentifier: String
+    private let logger = Logger(subsystem: "com.chinnsii.InputKeeper", category: "Coordinator")
     private var workspaceObserver: NSObjectProtocol?
     private var keyboardSelectionObserver: NSObjectProtocol?
     private var inputSourcePollingTimer: Timer?
-    private var pendingRestoration: PendingRestoration?
+    private var activationTask: Task<Void, Never>?
+    private var pendingActivationBundleIdentifier: String?
+    private var automaticInputSourceChangeFilter = AutomaticInputSourceChangeFilter()
     private var activeBundleIdentifier: String?
     private var lastObservedInputSourceID: String?
 
@@ -67,6 +96,11 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
 
         if isEnabled {
             synchronizeWithFrontmostApplication()
+        } else {
+            activationTask?.cancel()
+            activationTask = nil
+            pendingActivationBundleIdentifier = nil
+            automaticInputSourceChangeFilter.cancel()
         }
     }
 
@@ -163,16 +197,56 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
     }
 
     private func handleApplicationActivation(_ application: NSRunningApplication) {
-        guard isEnabled, let activeApplication = descriptor(for: application) else {
+        guard
+            isEnabled,
+            let activeApplication = descriptor(for: application),
+            workspace.frontmostApplication?.bundleIdentifier == activeApplication.bundleIdentifier
+        else {
             return
         }
 
+        activationTask?.cancel()
         activeBundleIdentifier = activeApplication.bundleIdentifier
+        pendingActivationBundleIdentifier = activeApplication.bundleIdentifier
         currentApplicationName = activeApplication.name
+
+        if let currentInputSource = inputSourceManager.currentInputSource() {
+            lastObservedInputSourceID = currentInputSource.id
+            currentInputSourceName = currentInputSource.name
+        }
+
+        activationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+
+            self?.completeApplicationActivation(activeApplication)
+        }
+    }
+
+    private func completeApplicationActivation(_ activeApplication: ActiveApplication) {
+        guard
+            isEnabled,
+            activeBundleIdentifier == activeApplication.bundleIdentifier,
+            pendingActivationBundleIdentifier == activeApplication.bundleIdentifier,
+            workspace.frontmostApplication?.bundleIdentifier == activeApplication.bundleIdentifier
+        else {
+            return
+        }
+
+        activationTask = nil
+        pendingActivationBundleIdentifier = nil
+
         guard let currentInputSource = inputSourceManager.currentInputSource() else {
             statusMessage = "无法读取当前输入法"
             return
         }
+
+        logger.debug(
+            "处理应用激活：应用=\(activeApplication.bundleIdentifier, privacy: .public)，当前输入源=\(currentInputSource.id, privacy: .public)"
+        )
+
         lastObservedInputSourceID = currentInputSource.id
         currentInputSourceName = currentInputSource.name
 
@@ -186,13 +260,14 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
             return
         }
 
-        pendingRestoration = PendingRestoration(
-            bundleIdentifier: activeApplication.bundleIdentifier,
-            inputSourceID: preference.inputSourceID
+        logger.info(
+            "恢复应用输入源：应用=\(activeApplication.bundleIdentifier, privacy: .public)，目标=\(preference.inputSourceID, privacy: .public)"
         )
 
+        automaticInputSourceChangeFilter.begin()
+
         guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
-            pendingRestoration = nil
+            automaticInputSourceChangeFilter.cancel()
             statusMessage = "无法切换到 \(preference.inputSourceName)，它可能已被停用"
             return
         }
@@ -223,16 +298,39 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
         currentApplicationName = activeApplication.name
         currentInputSourceName = currentInputSource.name
 
-        if let pendingRestoration {
-            self.pendingRestoration = nil
-            if pendingRestoration.bundleIdentifier == activeApplication.bundleIdentifier,
-               pendingRestoration.inputSourceID == currentInputSource.id {
-                statusMessage = nil
-                return
-            }
+        guard pendingActivationBundleIdentifier != activeApplication.bundleIdentifier else {
+            return
+        }
+
+        if automaticInputSourceChangeFilter.shouldSuppressChange() {
+            restoreRememberedInputSourceIfNeeded(currentInputSource, for: activeApplication)
+            return
         }
 
         remember(currentInputSource, for: activeApplication)
+    }
+
+    private func restoreRememberedInputSourceIfNeeded(
+        _ currentInputSource: InputSourceDescriptor,
+        for activeApplication: ActiveApplication
+    ) {
+        guard
+            let preference = store.preference(for: activeApplication.bundleIdentifier),
+            preference.inputSourceID != currentInputSource.id
+        else {
+            statusMessage = nil
+            return
+        }
+
+        automaticInputSourceChangeFilter.begin()
+        guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
+            automaticInputSourceChangeFilter.cancel()
+            statusMessage = "无法切换到 \(preference.inputSourceName)，它可能已被停用"
+            return
+        }
+
+        currentInputSourceName = inputSourceManager.inputSourceName(for: preference.inputSourceID) ?? preference.inputSourceName
+        statusMessage = nil
     }
 
     private func descriptor(for application: NSRunningApplication) -> ActiveApplication? {
