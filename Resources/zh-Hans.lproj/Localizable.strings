@@ -1,0 +1,46 @@
+"menu.enable_auto_switch" = "启用自动切换";
+"menu.remember_after_switching" = "切换输入法后会自动记住";
+"menu.remembered_applications" = "已记住 %ld 个应用";
+"menu.forget_record" = "忘记此记录";
+"menu.forget_all_records" = "清除全部记录";
+"menu.about" = "关于 InputKeeper";
+"menu.help" = "使用帮助";
+"menu.privacy_policy" = "隐私政策";
+"menu.technical_support" = "技术支持";
+"menu.quit" = "退出 InputKeeper";
+
+"help.title" = "InputKeeper 使用帮助";
+"help.how_it_works.title" = "工作方式";
+"help.how_it_works.body" = "InputKeeper 会记住每个应用最后使用的输入法。在某个应用处于前台时选择需要的输入法；下次回到该应用时，InputKeeper 会自动恢复它。";
+"help.controls.title" = "菜单栏控制";
+"help.controls.body" = "通过 InputKeeper 菜单可以暂停自动切换、查看已记住的应用、忘记单条记录或清除全部记录。";
+"help.permissions.title" = "系统权限";
+"help.permissions.body" = "InputKeeper 不读取输入文字，也不需要辅助功能或输入监控权限。它只使用 macOS 输入源接口，并将偏好保存在自己的沙盒容器中。";
+
+"support.title" = "InputKeeper 技术支持";
+"support.troubleshooting.title" = "问题排查";
+"support.troubleshooting.body" = "请先确认自动切换已启用，然后激活出现问题的应用并重新选择一次需要的输入法。如果旧记录不正确，请忘记该应用的记录后重新选择输入法。";
+"support.diagnostics.title" = "反馈时请提供";
+"support.diagnostics.body" = "反馈问题时请提供 macOS 版本、相关应用名称、输入法名称以及切换应用的准确顺序。请勿提供输入文字或私人文档内容。";
+"support.contact.title" = "联系开发者";
+"support.contact.body" = "请通过 InputKeeper 在 App Store 产品页面中的支持网址联系开发者，并查看最新支持信息。";
+
+"privacy.title" = "隐私政策";
+"privacy.updated" = "最后更新：2026 年 11 月 4 日";
+"privacy.local_data.title" = "保存在本机的数据";
+"privacy.local_data.body" = "InputKeeper 会保存应用的 Bundle ID 和名称、所选输入法的标识和名称，以及自动切换是否启用。这些偏好仅保存在 InputKeeper 的沙盒容器中。";
+"privacy.no_collection.title" = "不收集或共享数据";
+"privacy.no_collection.body" = "InputKeeper 不读取按键内容或文档内容，不传输数据、不跟踪用户、不显示广告、不包含分析功能，也不会与第三方共享信息。";
+"privacy.retention.title" = "保存与删除";
+"privacy.retention.body" = "记录会一直保留，直到你忘记单条记录、选择“清除全部记录”，或删除 InputKeeper 的沙盒数据。InputKeeper 不提供账号，也不会在远端保留副本。";
+"privacy.support.title" = "隐私问题";
+"privacy.support.body" = "如有隐私或支持问题，请从 InputKeeper 菜单选择“技术支持”。";
+
+"status.waiting_for_frontmost_application" = "等待前台应用";
+"status.unknown_input_source" = "未知输入法";
+"status.auto_switch_paused" = "自动切换已暂停";
+"status.forgot_input_method" = "已忘记 %@ 的输入法";
+"status.unable_to_read_current_input_source" = "无法读取当前输入法";
+"status.unable_to_switch_input_source" = "无法切换到 %@，它可能已被停用";
+"status.remembered_input_source" = "已记住 %@：%@";
+"status.forgot_all_input_methods" = "已清除全部输入法记录";

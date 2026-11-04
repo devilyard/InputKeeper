@@ -1,0 +1,46 @@
+"menu.enable_auto_switch" = "Enable Automatic Switching";
+"menu.remember_after_switching" = "Input methods are remembered after you switch them";
+"menu.remembered_applications" = "Remembered Applications: %ld";
+"menu.forget_record" = "Forget This Setting";
+"menu.forget_all_records" = "Forget All Settings";
+"menu.about" = "About InputKeeper";
+"menu.help" = "Help";
+"menu.privacy_policy" = "Privacy Policy";
+"menu.technical_support" = "Technical Support";
+"menu.quit" = "Quit InputKeeper";
+
+"help.title" = "InputKeeper Help";
+"help.how_it_works.title" = "How It Works";
+"help.how_it_works.body" = "InputKeeper remembers the last input method used in each app. Select the input method you want while an app is active; the next time you return to that app, InputKeeper restores it automatically.";
+"help.controls.title" = "Menu Bar Controls";
+"help.controls.body" = "Use the InputKeeper menu to pause automatic switching, inspect remembered apps, forget one setting, or remove all remembered settings.";
+"help.permissions.title" = "Permissions";
+"help.permissions.body" = "InputKeeper does not read typed text and does not require Accessibility or Input Monitoring permission. It uses macOS input-source APIs and stores preferences only in its sandbox container.";
+
+"support.title" = "InputKeeper Support";
+"support.troubleshooting.title" = "Troubleshooting";
+"support.troubleshooting.body" = "Make sure automatic switching is enabled, activate the affected app, and select the desired input method once. If an old setting is incorrect, forget that app’s setting and select the input method again.";
+"support.diagnostics.title" = "Information to Include";
+"support.diagnostics.body" = "When reporting a problem, include your macOS version, the affected app names, the input method names, and the exact order in which you switched apps. Never include typed text or private document content.";
+"support.contact.title" = "Contact";
+"support.contact.body" = "Use the support URL on InputKeeper’s App Store product page to contact the developer and check current support information.";
+
+"privacy.title" = "Privacy Policy";
+"privacy.updated" = "Last updated: November 4, 2026";
+"privacy.local_data.title" = "Data Stored on This Mac";
+"privacy.local_data.body" = "InputKeeper stores an app’s bundle identifier and name, the selected input method’s identifier and name, and whether automatic switching is enabled. These preferences remain inside InputKeeper’s sandbox container.";
+"privacy.no_collection.title" = "No Collection or Sharing";
+"privacy.no_collection.body" = "InputKeeper does not read keystrokes or document content. It does not transmit data, track users, display advertising, include analytics, or share information with third parties.";
+"privacy.retention.title" = "Retention and Deletion";
+"privacy.retention.body" = "Preferences remain until you forget an individual setting, choose Forget All Settings, or remove InputKeeper’s sandbox data. InputKeeper has no account or remote copy of this information.";
+"privacy.support.title" = "Questions";
+"privacy.support.body" = "For privacy questions or support, choose Technical Support from the InputKeeper menu.";
+
+"status.waiting_for_frontmost_application" = "Waiting for a foreground app";
+"status.unknown_input_source" = "Unknown Input Method";
+"status.auto_switch_paused" = "Automatic switching is paused";
+"status.forgot_input_method" = "Forgot the input method for %@";
+"status.unable_to_read_current_input_source" = "Unable to read the current input method";
+"status.unable_to_switch_input_source" = "Unable to switch to %@. It may be disabled.";
+"status.remembered_input_source" = "Remembered %@: %@";
+"status.forgot_all_input_methods" = "Forgot all remembered input methods";

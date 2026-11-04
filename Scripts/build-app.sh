@@ -32,9 +32,11 @@ cd "${project_directory}"
 
 version="$(configuration_value VERSION)"
 build_number="$(configuration_value BUILD_NUMBER)"
+development_language="$(configuration_value DEVELOPMENT_LANGUAGE)"
+bundle_identifier="$(configuration_value PRODUCT_BUNDLE_IDENTIFIER)"
 
-if [[ -z "${version}" || -z "${build_number}" ]]; then
-    echo "无法从 ${configuration_file} 读取 VERSION 或 BUILD_NUMBER" >&2
+if [[ -z "${version}" || -z "${build_number}" || -z "${development_language}" || -z "${bundle_identifier}" ]]; then
+    echo "无法从 ${configuration_file} 读取应用配置" >&2
     exit 1
 fi
 
@@ -44,6 +46,11 @@ binary_directory="$(swift build -c "${configuration}" --show-bin-path --disable-
 mkdir -p "${app_directory}/Contents/MacOS" "${app_directory}/Contents/Resources"
 cp "${binary_directory}/InputKeeper" "${app_directory}/Contents/MacOS/InputKeeper"
 cp "${project_directory}/Resources/Info.plist" "${app_directory}/Contents/Info.plist"
+cp "${project_directory}/Resources/PrivacyInfo.xcprivacy" "${app_directory}/Contents/Resources/PrivacyInfo.xcprivacy"
+cp -R "${project_directory}/Resources/en.lproj" "${app_directory}/Contents/Resources/"
+cp -R "${project_directory}/Resources/zh-Hans.lproj" "${app_directory}/Contents/Resources/"
+plutil -replace CFBundleDevelopmentRegion -string "${development_language}" "${app_directory}/Contents/Info.plist"
+plutil -replace CFBundleIdentifier -string "${bundle_identifier}" "${app_directory}/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "${version}" "${app_directory}/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "${build_number}" "${app_directory}/Contents/Info.plist"
 
@@ -55,6 +62,8 @@ xcrun actool "${project_directory}/Resources/Assets.xcassets" \
     --app-icon AppIcon \
     --output-partial-info-plist "${asset_output_directory}/asset-info.plist"
 
-codesign --force --sign - "${app_directory}"
+codesign --force --sign - \
+    --entitlements "${project_directory}/Resources/InputKeeper.entitlements" \
+    "${app_directory}"
 
 echo "已生成 ${app_directory}"

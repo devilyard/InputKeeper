@@ -61,6 +61,17 @@ final class InputMethodStoreTests: XCTestCase {
         XCTAssertNil(InputMethodStore(defaults: defaults).preference(for: preference.bundleIdentifier))
     }
 
+    func testRemoveAllPreferencesPersists() {
+        let store = InputMethodStore(defaults: defaults)
+        store.save(makePreference(bundleIdentifier: "com.example.first", applicationName: "写作", inputSourceName: "拼音"))
+        store.save(makePreference(bundleIdentifier: "com.example.second", applicationName: "终端", inputSourceName: "ABC"))
+
+        store.removeAllPreferences()
+
+        XCTAssertTrue(store.preferences.isEmpty)
+        XCTAssertTrue(InputMethodStore(defaults: defaults).preferences.isEmpty)
+    }
+
     func testStoreMergesPreferencesSavedByAnotherInstance() {
         let firstStore = InputMethodStore(defaults: defaults)
         let secondStore = InputMethodStore(defaults: defaults)

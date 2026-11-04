@@ -13,7 +13,6 @@ struct InputKeeperApp: App {
     @StateObject private var coordinator: InputMethodCoordinator
 
     init() {
-        Self.terminateOtherInstances()
         _coordinator = StateObject(wrappedValue: InputMethodCoordinator())
     }
 
@@ -24,36 +23,20 @@ struct InputKeeperApp: App {
             Image(systemName: coordinator.isEnabled ? "keyboard.badge.eye" : "keyboard")
         }
         .menuBarExtraStyle(.menu)
-    }
 
-    private static func terminateOtherInstances() {
-        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
-            return
+        Window(L10n.string("help.title"), id: InputKeeperWindow.help) {
+            InputKeeperHelpView()
         }
+        .defaultSize(width: 520, height: 420)
 
-        let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
-        let otherInstances = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).filter {
-            $0.processIdentifier != currentProcessIdentifier
+        Window(L10n.string("privacy.title"), id: InputKeeperWindow.privacyPolicy) {
+            PrivacyPolicyView()
         }
+        .defaultSize(width: 560, height: 540)
 
-        for instance in otherInstances {
-            instance.terminate()
+        Window(L10n.string("support.title"), id: InputKeeperWindow.technicalSupport) {
+            TechnicalSupportView()
         }
-
-        waitForTermination(of: otherInstances, timeout: 0.5)
-
-        let remainingInstances = otherInstances.filter { !$0.isTerminated }
-        for instance in remainingInstances {
-            instance.forceTerminate()
-        }
-
-        waitForTermination(of: remainingInstances, timeout: 0.5)
-    }
-
-    private static func waitForTermination(of applications: [NSRunningApplication], timeout: TimeInterval) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while applications.contains(where: { !$0.isTerminated }), Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
+        .defaultSize(width: 520, height: 420)
     }
 }

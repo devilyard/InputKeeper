@@ -50,15 +50,15 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
 
     @Published private(set) var rememberedApplications: [ApplicationInputPreference]
     @Published private(set) var isEnabled: Bool
-    @Published private(set) var currentApplicationName = "等待前台应用"
-    @Published private(set) var currentInputSourceName = "未知输入法"
+    @Published private(set) var currentApplicationName = L10n.string("status.waiting_for_frontmost_application")
+    @Published private(set) var currentInputSourceName = L10n.string("status.unknown_input_source")
     @Published private(set) var statusMessage: String?
 
     private let store: InputMethodStore
     private let inputSourceManager: InputSourceManaging
     private let workspace: NSWorkspace
     private let ownBundleIdentifier: String
-    private let logger = Logger(subsystem: "com.chinnsii.InputKeeper", category: "Coordinator")
+    private let logger = Logger(subsystem: "com.typhoon.InputKeeper", category: "Coordinator")
     private var workspaceObserver: NSObjectProtocol?
     private var keyboardSelectionObserver: NSObjectProtocol?
     private var inputSourcePollingTimer: Timer?
@@ -72,7 +72,7 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
         store: InputMethodStore = InputMethodStore(),
         inputSourceManager: InputSourceManaging = SystemInputSourceManager(),
         workspace: NSWorkspace = .shared,
-        ownBundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.chinnsii.InputKeeper"
+        ownBundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.typhoon.InputKeeper"
     ) {
         self.store = store
         self.inputSourceManager = inputSourceManager
@@ -92,7 +92,7 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
 
         self.isEnabled = isEnabled
         store.setMonitoringEnabled(isEnabled)
-        statusMessage = isEnabled ? nil : "自动切换已暂停"
+        statusMessage = isEnabled ? nil : L10n.string("status.auto_switch_paused")
 
         if isEnabled {
             synchronizeWithFrontmostApplication()
@@ -107,7 +107,13 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
     func forget(_ preference: ApplicationInputPreference) {
         store.removePreference(for: preference.bundleIdentifier)
         reloadPreferences()
-        statusMessage = "已忘记 \(preference.applicationName) 的输入法"
+        statusMessage = L10n.string("status.forgot_input_method", preference.applicationName)
+    }
+
+    func forgetAll() {
+        store.removeAllPreferences()
+        reloadPreferences()
+        statusMessage = L10n.string("status.forgot_all_input_methods")
     }
 
     private func startMonitoring() {
@@ -239,7 +245,7 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
         pendingActivationBundleIdentifier = nil
 
         guard let currentInputSource = inputSourceManager.currentInputSource() else {
-            statusMessage = "无法读取当前输入法"
+            statusMessage = L10n.string("status.unable_to_read_current_input_source")
             return
         }
 
@@ -268,7 +274,7 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
 
         guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
             automaticInputSourceChangeFilter.cancel()
-            statusMessage = "无法切换到 \(preference.inputSourceName)，它可能已被停用"
+            statusMessage = L10n.string("status.unable_to_switch_input_source", preference.inputSourceName)
             return
         }
 
@@ -325,7 +331,7 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
         automaticInputSourceChangeFilter.begin()
         guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
             automaticInputSourceChangeFilter.cancel()
-            statusMessage = "无法切换到 \(preference.inputSourceName)，它可能已被停用"
+            statusMessage = L10n.string("status.unable_to_switch_input_source", preference.inputSourceName)
             return
         }
 
@@ -359,7 +365,7 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
 
         store.save(preference)
         reloadPreferences()
-        statusMessage = "已记住 \(application.name)：\(inputSource.name)"
+        statusMessage = L10n.string("status.remembered_input_source", application.name, inputSource.name)
     }
 
     private func reloadPreferences() {

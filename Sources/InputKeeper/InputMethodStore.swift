@@ -50,6 +50,11 @@ final class InputMethodStore {
         persistPreferences()
     }
 
+    func removeAllPreferences() {
+        preferencesByBundleIdentifier.removeAll()
+        defaults.removeObject(forKey: Key.preferences)
+    }
+
     func setMonitoringEnabled(_ isEnabled: Bool) {
         defaults.set(isEnabled, forKey: Key.isMonitoringEnabled)
     }

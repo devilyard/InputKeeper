@@ -6,6 +6,7 @@ InputKeeper 是一个 macOS 菜单栏小工具。它会为每个应用记住最�
 - 在应用中手动切换输入法时，立即更新该应用的记录。
 - 记录保存在本机 `UserDefaults`，退出或重启后仍然有效。
 - 不读取键盘内容，不需要“辅助功能”或“输入监控”权限。
+- 应用运行在 App Sandbox 中，不上传数据，也不包含分析或广告 SDK。
 
 ## 构建与运行
 
@@ -22,11 +23,11 @@ open dist/InputKeeper.app
 
 ## 开发
 
-可以直接使用 Xcode 打开 `InputKeeper.xcodeproj`，选择 `InputKeeper` Scheme 后点击运行。工程使用本地临时签名，不需要配置开发者团队。
+可以直接使用 Xcode 打开 `InputKeeper.xcodeproj`，选择 `InputKeeper` Scheme 后点击运行。工程使用 Automatic Signing，Bundle ID 为 `com.typhoon.InputKeeper`。
 
 ```bash
 swift test
 swift run InputKeeper
 ```
 
-`swift run` 适合开发调试；日常使用建议运行脚本生成的 `.app`。
+`swift run` 适合开发调试；日常使用建议运行脚本生成的 `.app`。脚本生成的是带 App Sandbox entitlement 的临时签名包，仅供本机测试；提交 Mac App Store 时请使用 Xcode 的 Archive 和 Distribute App 流程。

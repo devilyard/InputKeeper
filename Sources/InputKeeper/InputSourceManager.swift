@@ -21,7 +21,7 @@ protocol InputSourceManaging: AnyObject {
 }
 
 final class SystemInputSourceManager: InputSourceManaging {
-    private let logger = Logger(subsystem: "com.chinnsii.InputKeeper", category: "InputSource")
+    private let logger = Logger(subsystem: "com.typhoon.InputKeeper", category: "InputSource")
 
     func currentInputSource() -> InputSourceDescriptor? {
         guard let unmanagedSource = TISCopyCurrentKeyboardInputSource() else {
@@ -40,6 +40,10 @@ final class SystemInputSourceManager: InputSourceManaging {
             return false
         }
 
+        guard prepareForSelection(source) else {
+            return false
+        }
+
         let status = TISSelectInputSource(source)
         let currentID = currentInputSource()?.id ?? "未知"
         logger.info(
@@ -51,17 +55,87 @@ final class SystemInputSourceManager: InputSourceManaging {
         return status == noErr
     }
 
-    private func inputSource(withID id: String) -> TISInputSource? {
-        let filter = [kTISPropertyInputSourceID: id as CFString] as CFDictionary
-        guard let unmanagedSources = TISCreateInputSourceList(filter, true) else {
+    private func prepareForSelection(_ source: TISInputSource) -> Bool {
+        let sourceID = stringProperty(kTISPropertyInputSourceID, of: source) ?? "未知"
+
+        guard boolProperty(kTISPropertyInputSourceIsSelectCapable, of: source) == true else {
+            logger.error("输入源不可选择：\(sourceID, privacy: .public)")
+            return false
+        }
+
+        guard boolProperty(kTISPropertyInputSourceIsEnabled, of: source) == true else {
+            logger.error("输入源已被用户停用：\(sourceID, privacy: .public)")
+            return false
+        }
+
+        guard
+            stringProperty(kTISPropertyInputSourceType, of: source) == kTISTypeKeyboardInputMode as String,
+            let parent = parentInputSource(for: source)
+        else {
+            return true
+        }
+
+        return enableParentIfNeeded(parent, childID: sourceID)
+    }
+
+    private func parentInputSource(for source: TISInputSource) -> TISInputSource? {
+        guard let bundleIdentifier = stringProperty(kTISPropertyBundleID, of: source) else {
             return nil
         }
 
-        let sources = unmanagedSources.takeRetainedValue() as NSArray
-        for case let source as TISInputSource in sources {
-            return source
+        let filter = [kTISPropertyBundleID: bundleIdentifier as CFString] as CFDictionary
+        return inputSources(matching: filter, includeAllInstalled: true).first {
+            stringProperty(kTISPropertyInputSourceType, of: $0) == kTISTypeKeyboardInputMethodModeEnabled as String
         }
-        return nil
+    }
+
+    private func enableParentIfNeeded(_ parent: TISInputSource, childID: String) -> Bool {
+        guard boolProperty(kTISPropertyInputSourceIsEnabled, of: parent) != true else {
+            return true
+        }
+
+        let parentID = stringProperty(kTISPropertyInputSourceID, of: parent) ?? "未知"
+        guard boolProperty(kTISPropertyInputSourceIsEnableCapable, of: parent) == true else {
+            logger.error(
+                "输入模式的父输入法无法启用：子项=\(childID, privacy: .public)，父项=\(parentID, privacy: .public)"
+            )
+            return false
+        }
+
+        let status = TISEnableInputSource(parent)
+        logger.info(
+            "启用输入模式的父输入法：子项=\(childID, privacy: .public)，父项=\(parentID, privacy: .public)，状态码=\(status)"
+        )
+
+        guard status == noErr else {
+            logger.error("启用父输入法失败：\(parentID, privacy: .public)，状态码=\(status)")
+            return false
+        }
+
+        guard boolProperty(kTISPropertyInputSourceIsEnabled, of: parent) == true else {
+            logger.error("父输入法状态未生效：\(parentID, privacy: .public)")
+            return false
+        }
+
+        return true
+    }
+
+    private func inputSource(withID id: String) -> TISInputSource? {
+        let filter = [kTISPropertyInputSourceID: id as CFString] as CFDictionary
+        return inputSources(matching: filter, includeAllInstalled: true).first
+    }
+
+    private func inputSources(matching filter: CFDictionary, includeAllInstalled: Bool) -> [TISInputSource] {
+        guard let unmanagedSources = TISCreateInputSourceList(filter, includeAllInstalled) else {
+            return []
+        }
+
+        let sources = unmanagedSources.takeRetainedValue() as NSArray
+        var inputSources: [TISInputSource] = []
+        for case let source as TISInputSource in sources {
+            inputSources.append(source)
+        }
+        return inputSources
     }
 
     private func descriptor(for source: TISInputSource) -> InputSourceDescriptor? {
@@ -78,5 +152,13 @@ final class SystemInputSourceManager: InputSourceManaging {
             return nil
         }
         return Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+    }
+
+    private func boolProperty(_ key: CFString, of source: TISInputSource) -> Bool? {
+        guard let pointer = TISGetInputSourceProperty(source, key) else {
+            return nil
+        }
+        let value = Unmanaged<CFBoolean>.fromOpaque(pointer).takeUnretainedValue()
+        return CFBooleanGetValue(value)
     }
 }
