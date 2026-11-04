@@ -61,13 +61,67 @@ final class InputMethodStoreTests: XCTestCase {
         XCTAssertNil(InputMethodStore(defaults: defaults).preference(for: preference.bundleIdentifier))
     }
 
+    func testStoreMergesPreferencesSavedByAnotherInstance() {
+        let firstStore = InputMethodStore(defaults: defaults)
+        let secondStore = InputMethodStore(defaults: defaults)
+        let firstPreference = makePreference(
+            bundleIdentifier: "com.example.first",
+            applicationName: "第一个应用",
+            inputSourceName: "鼠须管"
+        )
+        let secondPreference = makePreference(
+            bundleIdentifier: "com.example.second",
+            applicationName: "第二个应用",
+            inputSourceID: "abc",
+            inputSourceName: "ABC"
+        )
+
+        firstStore.save(firstPreference)
+        secondStore.save(secondPreference)
+
+        let reloadedStore = InputMethodStore(defaults: defaults)
+        XCTAssertEqual(reloadedStore.preference(for: firstPreference.bundleIdentifier), firstPreference)
+        XCTAssertEqual(reloadedStore.preference(for: secondPreference.bundleIdentifier), secondPreference)
+    }
+
+    func testAutomaticInputSourceChangeIsSuppressedDuringProtectionInterval() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+
+        filter.begin(at: startDate)
+
+        XCTAssertTrue(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.49)))
+    }
+
+    func testInputSourceChangeIsAcceptedAfterProtectionInterval() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+
+        filter.begin(at: startDate)
+
+        XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.5)))
+        XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.51)))
+    }
+
+    func testStartingAnotherAutomaticChangeExtendsProtectionInterval() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+
+        filter.begin(at: startDate)
+        filter.begin(at: startDate.addingTimeInterval(0.4))
+
+        XCTAssertTrue(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.8)))
+        XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.9)))
+    }
+
     private func makePreference(
+        bundleIdentifier: String = "com.example.application",
         applicationName: String,
         inputSourceID: String = "test.input-source",
         inputSourceName: String
     ) -> ApplicationInputPreference {
         ApplicationInputPreference(
-            bundleIdentifier: "com.example.application",
+            bundleIdentifier: bundleIdentifier,
             applicationName: applicationName,
             inputSourceID: inputSourceID,
             inputSourceName: inputSourceName

@@ -39,11 +39,13 @@ final class InputMethodStore {
     }
 
     func save(_ preference: ApplicationInputPreference) {
+        preferencesByBundleIdentifier = Self.loadPreferences(from: defaults)
         preferencesByBundleIdentifier[preference.bundleIdentifier] = preference
         persistPreferences()
     }
 
     func removePreference(for bundleIdentifier: String) {
+        preferencesByBundleIdentifier = Self.loadPreferences(from: defaults)
         preferencesByBundleIdentifier.removeValue(forKey: bundleIdentifier)
         persistPreferences()
     }
