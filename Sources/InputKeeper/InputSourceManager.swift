@@ -14,6 +14,12 @@ struct InputSourceDescriptor: Equatable {
     let name: String
 }
 
+struct InputSourceParentRetryPolicy {
+    static func shouldRetry(initialStatus: OSStatus, sourceType: String?) -> Bool {
+        initialStatus == paramErr && sourceType == kTISTypeKeyboardInputMode as String
+    }
+}
+
 protocol InputSourceManaging: AnyObject {
     func currentInputSource() -> InputSourceDescriptor?
     func inputSourceName(for id: String) -> String?
@@ -40,22 +46,42 @@ final class SystemInputSourceManager: InputSourceManaging {
             return false
         }
 
-        guard prepareForSelection(source) else {
+        guard validateForSelection(source) else {
             return false
         }
 
-        let status = TISSelectInputSource(source)
+        let initialStatus = TISSelectInputSource(source)
+        if initialStatus == noErr {
+            logSelection(id: id, status: initialStatus, isRetry: false)
+            return true
+        }
+
+        let sourceType = stringProperty(kTISPropertyInputSourceType, of: source)
+        guard
+            InputSourceParentRetryPolicy.shouldRetry(initialStatus: initialStatus, sourceType: sourceType),
+            let parent = parentInputSource(for: source),
+            enableParentIfNeeded(parent, childID: id)
+        else {
+            logSelection(id: id, status: initialStatus, isRetry: false)
+            return false
+        }
+
+        let retryStatus = TISSelectInputSource(source)
+        logSelection(id: id, status: retryStatus, isRetry: true)
+        return retryStatus == noErr
+    }
+
+    private func logSelection(id: String, status: OSStatus, isRetry: Bool) {
         let currentID = currentInputSource()?.id ?? "未知"
         logger.info(
-            "切换输入源：目标=\(id, privacy: .public)，状态码=\(status)，当前=\(currentID, privacy: .public)"
+            "切换输入源：目标=\(id, privacy: .public)，重试=\(isRetry)，状态码=\(status)，当前=\(currentID, privacy: .public)"
         )
         if status != noErr {
             logger.error("切换输入源失败：\(id, privacy: .public)，状态码：\(status)")
         }
-        return status == noErr
     }
 
-    private func prepareForSelection(_ source: TISInputSource) -> Bool {
+    private func validateForSelection(_ source: TISInputSource) -> Bool {
         let sourceID = stringProperty(kTISPropertyInputSourceID, of: source) ?? "未知"
 
         guard boolProperty(kTISPropertyInputSourceIsSelectCapable, of: source) == true else {
@@ -68,14 +94,7 @@ final class SystemInputSourceManager: InputSourceManaging {
             return false
         }
 
-        guard
-            stringProperty(kTISPropertyInputSourceType, of: source) == kTISTypeKeyboardInputMode as String,
-            let parent = parentInputSource(for: source)
-        else {
-            return true
-        }
-
-        return enableParentIfNeeded(parent, childID: sourceID)
+        return true
     }
 
     private func parentInputSource(for source: TISInputSource) -> TISInputSource? {

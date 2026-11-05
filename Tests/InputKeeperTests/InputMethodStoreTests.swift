@@ -5,6 +5,7 @@
 //  Created by chinnsii on 2026/8/24.
 //
 
+import Carbon.HIToolbox
 import XCTest
 @testable import InputKeeper
 
@@ -123,6 +124,33 @@ final class InputMethodStoreTests: XCTestCase {
 
         XCTAssertTrue(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.8)))
         XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.9)))
+    }
+
+    func testSuccessfulInputSourceSelectionDoesNotEnableParent() {
+        XCTAssertFalse(
+            InputSourceParentRetryPolicy.shouldRetry(
+                initialStatus: noErr,
+                sourceType: kTISTypeKeyboardInputMode as String
+            )
+        )
+    }
+
+    func testInvalidInputModeSelectionRetriesAfterEnablingParent() {
+        XCTAssertTrue(
+            InputSourceParentRetryPolicy.shouldRetry(
+                initialStatus: OSStatus(paramErr),
+                sourceType: kTISTypeKeyboardInputMode as String
+            )
+        )
+    }
+
+    func testInvalidKeyboardLayoutSelectionDoesNotEnableParent() {
+        XCTAssertFalse(
+            InputSourceParentRetryPolicy.shouldRetry(
+                initialStatus: OSStatus(paramErr),
+                sourceType: kTISTypeKeyboardLayout as String
+            )
+        )
     }
 
     private func makePreference(
