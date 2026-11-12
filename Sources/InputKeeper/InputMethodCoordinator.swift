@@ -12,32 +12,74 @@ import Foundation
 import OSLog
 
 struct AutomaticInputSourceChangeFilter {
+    enum Action: Equatable {
+        case remember
+        case restore
+        case none
+    }
+
     private let protectionInterval: TimeInterval
+    private var protectedBundleIdentifier: String?
+    private var protectedInputSourceID: String?
     private var suppressionDeadline: Date?
 
     init(protectionInterval: TimeInterval = 0.5) {
         self.protectionInterval = protectionInterval
     }
 
-    mutating func begin(at date: Date = Date()) {
+    mutating func applicationDidActivate(
+        bundleIdentifier: String,
+        rememberedInputSourceID: String?,
+        currentInputSourceID: String,
+        at date: Date = Date()
+    ) -> Action {
+        cancel()
+        guard let rememberedInputSourceID else {
+            return .remember
+        }
+
+        // Activation can initially report the expected source, then restore a
+        // different source after the application's text field regains focus.
+        protectedBundleIdentifier = bundleIdentifier
+        protectedInputSourceID = rememberedInputSourceID
         suppressionDeadline = date.addingTimeInterval(protectionInterval)
+        return inputSourceDidChange(
+            to: currentInputSourceID,
+            in: bundleIdentifier,
+            at: date
+        )
     }
 
     mutating func cancel() {
+        protectedBundleIdentifier = nil
+        protectedInputSourceID = nil
         suppressionDeadline = nil
     }
 
-    mutating func shouldSuppressChange(at date: Date = Date()) -> Bool {
-        guard let suppressionDeadline else {
-            return false
+    mutating func inputSourceDidChange(
+        to inputSourceID: String,
+        in bundleIdentifier: String,
+        at date: Date = Date()
+    ) -> Action {
+        guard
+            protectedBundleIdentifier == bundleIdentifier,
+            let protectedInputSourceID,
+            let suppressionDeadline
+        else {
+            return .remember
         }
 
         guard date < suppressionDeadline else {
-            self.suppressionDeadline = nil
-            return false
+            cancel()
+            return .remember
         }
 
-        return true
+        guard inputSourceID != protectedInputSourceID else {
+            return .none
+        }
+
+        self.suppressionDeadline = date.addingTimeInterval(protectionInterval)
+        return .restore
     }
 }
 
@@ -70,12 +112,12 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
 
     init(
         store: InputMethodStore = InputMethodStore(),
-        inputSourceManager: InputSourceManaging = SystemInputSourceManager(),
+        inputSourceManager: InputSourceManaging? = nil,
         workspace: NSWorkspace = .shared,
         ownBundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.typhoon.InputKeeper"
     ) {
         self.store = store
-        self.inputSourceManager = inputSourceManager
+        self.inputSourceManager = inputSourceManager ?? SystemInputSourceManager()
         self.workspace = workspace
         self.ownBundleIdentifier = ownBundleIdentifier
         rememberedApplications = store.preferences
@@ -256,30 +298,12 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
         lastObservedInputSourceID = currentInputSource.id
         currentInputSourceName = currentInputSource.name
 
-        guard let preference = store.preference(for: activeApplication.bundleIdentifier) else {
-            remember(currentInputSource, for: activeApplication)
-            return
-        }
-
-        guard preference.inputSourceID != currentInputSource.id else {
-            statusMessage = nil
-            return
-        }
-
-        logger.info(
-            "恢复应用输入源：应用=\(activeApplication.bundleIdentifier, privacy: .public)，目标=\(preference.inputSourceID, privacy: .public)"
+        let action = automaticInputSourceChangeFilter.applicationDidActivate(
+            bundleIdentifier: activeApplication.bundleIdentifier,
+            rememberedInputSourceID: store.preference(for: activeApplication.bundleIdentifier)?.inputSourceID,
+            currentInputSourceID: currentInputSource.id
         )
-
-        automaticInputSourceChangeFilter.begin()
-
-        guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
-            automaticInputSourceChangeFilter.cancel()
-            statusMessage = L10n.string("status.unable_to_switch_input_source", preference.inputSourceName)
-            return
-        }
-
-        currentInputSourceName = inputSourceManager.inputSourceName(for: preference.inputSourceID) ?? preference.inputSourceName
-        statusMessage = nil
+        apply(action, to: currentInputSource, for: activeApplication)
     }
 
     private func handleInputSourceChange(_ observedInputSource: InputSourceDescriptor? = nil) {
@@ -308,12 +332,26 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
             return
         }
 
-        if automaticInputSourceChangeFilter.shouldSuppressChange() {
-            restoreRememberedInputSourceIfNeeded(currentInputSource, for: activeApplication)
-            return
-        }
+        let action = automaticInputSourceChangeFilter.inputSourceDidChange(
+            to: currentInputSource.id,
+            in: activeApplication.bundleIdentifier
+        )
+        apply(action, to: currentInputSource, for: activeApplication)
+    }
 
-        remember(currentInputSource, for: activeApplication)
+    private func apply(
+        _ action: AutomaticInputSourceChangeFilter.Action,
+        to currentInputSource: InputSourceDescriptor,
+        for activeApplication: ActiveApplication
+    ) {
+        switch action {
+        case .remember:
+            remember(currentInputSource, for: activeApplication)
+        case .restore:
+            restoreRememberedInputSourceIfNeeded(currentInputSource, for: activeApplication)
+        case .none:
+            statusMessage = nil
+        }
     }
 
     private func restoreRememberedInputSourceIfNeeded(
@@ -328,7 +366,12 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
             return
         }
 
-        automaticInputSourceChangeFilter.begin()
+        logger.info(
+            """
+            恢复应用输入源：应用=\(activeApplication.bundleIdentifier, privacy: .public)，\
+            当前=\(currentInputSource.id, privacy: .public)，目标=\(preference.inputSourceID, privacy: .public)
+            """
+        )
         guard inputSourceManager.selectInputSource(withID: preference.inputSourceID) else {
             automaticInputSourceChangeFilter.cancel()
             statusMessage = L10n.string("status.unable_to_switch_input_source", preference.inputSourceName)
@@ -363,6 +406,9 @@ final class InputMethodCoordinator: NSObject, ObservableObject {
             return
         }
 
+        logger.info(
+            "记住应用输入源：应用=\(application.bundleIdentifier, privacy: .public)，输入源=\(inputSource.id, privacy: .public)"
+        )
         store.save(preference)
         reloadPreferences()
         statusMessage = L10n.string("status.remembered_input_source", application.name, inputSource.name)

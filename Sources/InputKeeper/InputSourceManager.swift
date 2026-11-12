@@ -5,6 +5,7 @@
 //  Created by chinnsii on 2026/8/24.
 //
 
+@preconcurrency import AppKit
 import Carbon.HIToolbox
 import Foundation
 import OSLog
@@ -20,14 +21,21 @@ struct InputSourceParentRetryPolicy {
     }
 }
 
+@MainActor
 protocol InputSourceManaging: AnyObject {
     func currentInputSource() -> InputSourceDescriptor?
     func inputSourceName(for id: String) -> String?
     func selectInputSource(withID id: String) -> Bool
 }
 
+@MainActor
 final class SystemInputSourceManager: InputSourceManaging {
     private let logger = Logger(subsystem: "com.typhoon.InputKeeper", category: "InputSource")
+    private let activationRecovery: InputSourceActivationRecovering
+
+    init(activationRecovery: InputSourceActivationRecovering? = nil) {
+        self.activationRecovery = activationRecovery ?? SystemInputSourceActivationRecovery()
+    }
 
     func currentInputSource() -> InputSourceDescriptor? {
         guard let unmanagedSource = TISCopyCurrentKeyboardInputSource() else {
@@ -50,9 +58,20 @@ final class SystemInputSourceManager: InputSourceManaging {
             return false
         }
 
+        let previousSource = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
+        let shouldRecoverActivation = InputSourceActivationRecoveryPolicy.shouldRecover(
+            previousSourceType: previousSource.flatMap {
+                stringProperty(kTISPropertyInputSourceType, of: $0)
+            },
+            targetSourceType: stringProperty(kTISPropertyInputSourceType, of: source),
+            targetLanguages: stringArrayProperty(kTISPropertyInputSourceLanguages, of: source)
+        )
+        let applicationToReactivate = shouldRecoverActivation ? NSWorkspace.shared.frontmostApplication : nil
+
         let initialStatus = TISSelectInputSource(source)
         if initialStatus == noErr {
             logSelection(id: id, status: initialStatus, isRetry: false)
+            recoverActivationIfNeeded(returningTo: applicationToReactivate)
             return true
         }
 
@@ -68,7 +87,21 @@ final class SystemInputSourceManager: InputSourceManaging {
 
         let retryStatus = TISSelectInputSource(source)
         logSelection(id: id, status: retryStatus, isRetry: true)
+        if retryStatus == noErr {
+            recoverActivationIfNeeded(returningTo: applicationToReactivate)
+        }
         return retryStatus == noErr
+    }
+
+    private func recoverActivationIfNeeded(returningTo application: NSRunningApplication?) {
+        guard let application else {
+            return
+        }
+
+        logger.info(
+            "检测到键盘布局切入 CJKV 输入法，执行应用焦点往返以恢复输入控制器：应用=\(application.bundleIdentifier ?? "未知", privacy: .public)"
+        )
+        activationRecovery.recoverFocus(returningTo: application)
     }
 
     private func logSelection(id: String, status: OSStatus, isRetry: Bool) {
@@ -179,5 +212,12 @@ final class SystemInputSourceManager: InputSourceManaging {
         }
         let value = Unmanaged<CFBoolean>.fromOpaque(pointer).takeUnretainedValue()
         return CFBooleanGetValue(value)
+    }
+
+    private func stringArrayProperty(_ key: CFString, of source: TISInputSource) -> [String] {
+        guard let pointer = TISGetInputSourceProperty(source, key) else {
+            return []
+        }
+        return Unmanaged<NSArray>.fromOpaque(pointer).takeUnretainedValue() as? [String] ?? []
     }
 }

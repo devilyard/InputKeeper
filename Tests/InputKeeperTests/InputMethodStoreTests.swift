@@ -96,34 +96,182 @@ final class InputMethodStoreTests: XCTestCase {
         XCTAssertEqual(reloadedStore.preference(for: secondPreference.bundleIdentifier), secondPreference)
     }
 
-    func testAutomaticInputSourceChangeIsSuppressedDuringProtectionInterval() {
+    func testActivationRestoresRememberedInputSourceWhenDifferent() {
         let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
         var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
 
-        filter.begin(at: startDate)
-
-        XCTAssertTrue(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.49)))
+        XCTAssertEqual(
+            filter.applicationDidActivate(
+                bundleIdentifier: "com.openai.codex",
+                rememberedInputSourceID: "rime",
+                currentInputSourceID: "abc",
+                at: startDate
+            ),
+            .restore
+        )
     }
 
-    func testInputSourceChangeIsAcceptedAfterProtectionInterval() {
+    func testActivationAlreadyUsingRimeStillRestoresDelayedEnglishFallback() {
         let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
         var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
 
-        filter.begin(at: startDate)
+        XCTAssertEqual(
+            filter.applicationDidActivate(
+                bundleIdentifier: "com.openai.codex",
+                rememberedInputSourceID: "rime",
+                currentInputSourceID: "rime",
+                at: startDate
+            ),
+            .none
+        )
 
-        XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.5)))
-        XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.51)))
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.49)),
+            .restore
+        )
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "rime", in: "com.openai.codex", at: startDate.addingTimeInterval(0.49)),
+            .none
+        )
     }
 
-    func testStartingAnotherAutomaticChangeExtendsProtectionInterval() {
+    func testFocusRecoveryReturnStartsFreshProtectionEvenWhenSourceMatches() {
         let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
         var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
 
-        filter.begin(at: startDate)
-        filter.begin(at: startDate.addingTimeInterval(0.4))
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "abc",
+            at: startDate
+        )
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "rime",
+            at: startDate.addingTimeInterval(0.6)
+        )
 
-        XCTAssertTrue(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.8)))
-        XCTAssertFalse(filter.shouldSuppressChange(at: startDate.addingTimeInterval(0.9)))
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.8)),
+            .restore
+        )
+    }
+
+    func testChangesAreRememberedAfterProtectionExpires() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "rime",
+            at: startDate
+        )
+
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.5)),
+            .remember
+        )
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.51)),
+            .remember
+        )
+    }
+
+    func testRestoringFallbackProtectsFollowupChangesForAFullInterval() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "rime",
+            at: startDate
+        )
+
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.4)),
+            .restore
+        )
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.8)),
+            .restore
+        )
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(1.3)),
+            .remember
+        )
+    }
+
+    func testRapidActivationUsesTheNewApplicationsPreference() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "rime",
+            at: startDate
+        )
+        XCTAssertEqual(
+            filter.applicationDidActivate(
+                bundleIdentifier: "com.example.editor",
+                rememberedInputSourceID: "abc",
+                currentInputSourceID: "rime",
+                at: startDate.addingTimeInterval(0.1)
+            ),
+            .restore
+        )
+
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.example.editor", at: startDate.addingTimeInterval(0.2)),
+            .none
+        )
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.2)),
+            .remember
+        )
+    }
+
+    func testFirstVisitRemembersCurrentInputSourceWithoutPreviousApplicationsProtection() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "rime",
+            at: startDate
+        )
+
+        XCTAssertEqual(
+            filter.applicationDidActivate(
+                bundleIdentifier: "com.example.new",
+                rememberedInputSourceID: nil,
+                currentInputSourceID: "abc",
+                at: startDate.addingTimeInterval(0.1)
+            ),
+            .remember
+        )
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "rime", in: "com.example.new", at: startDate.addingTimeInterval(0.2)),
+            .remember
+        )
+    }
+
+    func testCancellingProtectionAllowsInputSourceChangesToBeRemembered() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 1_000)
+        var filter = AutomaticInputSourceChangeFilter(protectionInterval: 0.5)
+        _ = filter.applicationDidActivate(
+            bundleIdentifier: "com.openai.codex",
+            rememberedInputSourceID: "rime",
+            currentInputSourceID: "rime",
+            at: startDate
+        )
+
+        filter.cancel()
+
+        XCTAssertEqual(
+            filter.inputSourceDidChange(to: "abc", in: "com.openai.codex", at: startDate.addingTimeInterval(0.1)),
+            .remember
+        )
     }
 
     func testSuccessfulInputSourceSelectionDoesNotEnableParent() {
@@ -149,6 +297,46 @@ final class InputMethodStoreTests: XCTestCase {
             InputSourceParentRetryPolicy.shouldRetry(
                 initialStatus: OSStatus(paramErr),
                 sourceType: kTISTypeKeyboardLayout as String
+            )
+        )
+    }
+
+    func testCJKVInputModeSelectedFromKeyboardLayoutRequiresActivationRecovery() {
+        XCTAssertTrue(
+            InputSourceActivationRecoveryPolicy.shouldRecover(
+                previousSourceType: kTISTypeKeyboardLayout as String,
+                targetSourceType: kTISTypeKeyboardInputMode as String,
+                targetLanguages: ["zh-Hans"]
+            )
+        )
+    }
+
+    func testCJKVInputModeSelectedFromAnotherInputModeDoesNotRequireActivationRecovery() {
+        XCTAssertFalse(
+            InputSourceActivationRecoveryPolicy.shouldRecover(
+                previousSourceType: kTISTypeKeyboardInputMode as String,
+                targetSourceType: kTISTypeKeyboardInputMode as String,
+                targetLanguages: ["zh-Hans"]
+            )
+        )
+    }
+
+    func testLatinInputModeDoesNotRequireActivationRecovery() {
+        XCTAssertFalse(
+            InputSourceActivationRecoveryPolicy.shouldRecover(
+                previousSourceType: kTISTypeKeyboardLayout as String,
+                targetSourceType: kTISTypeKeyboardInputMode as String,
+                targetLanguages: ["en"]
+            )
+        )
+    }
+
+    func testKeyboardLayoutTargetDoesNotRequireActivationRecovery() {
+        XCTAssertFalse(
+            InputSourceActivationRecoveryPolicy.shouldRecover(
+                previousSourceType: kTISTypeKeyboardLayout as String,
+                targetSourceType: kTISTypeKeyboardLayout as String,
+                targetLanguages: ["zh-Hans"]
             )
         )
     }
